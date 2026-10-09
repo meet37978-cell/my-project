@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt 
 # streamlit run iplstr.py 
 # Load Data
 df = pd.read_csv("IPL.csv", low_memory=False)
@@ -311,23 +311,61 @@ elif home == "👥 Team Comparison":
 
     st.bar_chart(wickets_df)
 
+
 elif home == "👤 Player Stats":
+
     st.title("🏏 Player Stats")
+    st.caption("Search any IPL player to explore career performance")
     st.markdown("---")
+
+    # ==============================
+    # PLAYER SEARCH & AUTOCOMPLETE
+    # ==============================
 
     all_batters = set(df["batter"].dropna().unique())
     all_bowlers = set(df["bowler"].dropna().unique())
-    all_players = sorted(all_batters.union(all_bowlers))
+
+    all_players = sorted(
+        all_batters.union(all_bowlers),
+        key=str.casefold
+    )
+
+    search_text = st.text_input(
+        "🔍 Search Player",
+        placeholder="Type player name... e.g. Rohit, Virat, Dhoni",
+        key="player_search_input"
+    )
+
+    if search_text.strip():
+        matching_players = [
+            player for player in all_players
+            if search_text.strip().casefold() in player.casefold()
+        ]
+    else:
+        matching_players = all_players
+
+    if not matching_players:
+        st.warning("❌ No matching players found. Try another name.")
+        st.stop()
 
     selected_player = st.selectbox(
-        "🔍 Search Player",
-        all_players,
+        "👤 Select Player",
+        matching_players,
         index=None,
-        placeholder="Type player name...",
+        placeholder="Select a player from suggestions...",
         key="ps_player"
     )
 
-    st.markdown("---")
+    if selected_player is None:
+        st.info(
+            "👆 Start typing a player name and select a player "
+            "to view statistics."
+        )
+        st.stop()
+
+    # ==============================
+    # PLAYER ROLE & TEAMS
+    # ==============================
 
     is_batter = selected_player in all_batters
     is_bowler = selected_player in all_bowlers
@@ -339,199 +377,282 @@ elif home == "👤 Player Stats":
     else:
         role = "🎯 Bowler"
 
-    st.markdown(f"### ⏩ {selected_player} — {role}")
+    st.markdown("---")
+    st.markdown(f"## 🏏 {selected_player}")
+    st.markdown(f"**Player Role:** {role}")
+
+    player_teams = set(
+        df.loc[
+            df["batter"] == selected_player,
+            "batting_team"
+        ].dropna().unique()
+    )
+
+    player_teams.update(
+        df.loc[
+            df["bowler"] == selected_player,
+            "bowling_team"
+        ].dropna().unique()
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("🏟️ Total Teams", len(player_teams))
+
+    with col2:
+        st.write("**Teams Played For**")
+        st.write(", ".join(sorted(player_teams)) or "N/A")
+
     st.markdown("---")
 
-    # total team of player
-
-    player_teams = set(df[df["batter"] == selected_player]["batting_team"].dropna().unique())
-    player_teams = player_teams.union(set(df[df["bowler"] == selected_player]["bowling_team"].dropna().unique()))
-
-    st.markdown(f"**ToTal Teams: {len(player_teams)}**\nTeam names: {player_teams}")
-
-    st.markdown("---")
-
+    # ==============================
+    # BATTING CAREER STATS
+    # ==============================
 
     if is_batter:
 
-        st.title("🏏 Batting Career Stats")
+        st.header("🏏 Batting Career Stats")
 
-        bat_df = df[df["batter"] == selected_player]
+        bat_df = df[
+            df["batter"] == selected_player
+        ].copy()
 
-        # Matches
         career_matches = bat_df["match_id"].nunique()
-
-        # Runs
         career_runs = bat_df["runs_batter"].sum()
 
-        # Balls Faced
+        # Valid balls faced
         career_balls = bat_df["valid_ball"].sum()
 
-        # Strike Rate
-        strike_rate = round(
-            (career_runs / career_balls) * 100, 2
-        ) if career_balls > 0 else 0
+        strike_rate = (
+            round(career_runs / career_balls * 100, 2)
+            if career_balls > 0 else 0
+        )
 
-        # Highest Score
-        per_match_runs = bat_df.groupby("match_id")["runs_batter"].sum()
+        per_match_runs = (
+            bat_df.groupby("match_id")["runs_batter"].sum()
+        )
 
         highest_score = (
             per_match_runs.max()
-            if not per_match_runs.empty
-            else 0
+            if not per_match_runs.empty else 0
         )
 
-        # Boundaries
         fours = (bat_df["runs_batter"] == 4).sum()
         sixes = (bat_df["runs_batter"] == 6).sum()
 
-        # 50s & 100s
         fifties = (
             (per_match_runs >= 50) &
             (per_match_runs < 100)
         ).sum()
 
-        hundreds = (
-            per_match_runs >= 100
-        ).sum()
+        hundreds = (per_match_runs >= 100).sum()
 
-        bc1, bc2, bc3, bc4 = st.columns(4)
+        # First row of metrics
+        c1, c2, c3, c4 = st.columns(4)
 
-        bc1.metric("Matches", career_matches)
-        bc2.metric("Runs", int(career_runs))
-        bc3.metric("Balls Faced", int(career_balls))
-        bc4.metric("Strike Rate", strike_rate)
+        c1.metric("Matches", career_matches)
+        c2.metric("Total Runs", int(career_runs))
+        c3.metric("Balls Faced", int(career_balls))
+        c4.metric("Strike Rate", strike_rate)
 
-        bc5, bc6, bc7, bc8 = st.columns(4)
+        # Second row of metrics
+        c5, c6, c7, c8 = st.columns(4)
 
-        bc5.metric("Highest Score", int(highest_score))
-        bc6.metric("4s", int(fours))
-        bc7.metric("6s", int(sixes))
-        bc8.metric("50s / 100s", f"{fifties} / {hundreds}")
+        c5.metric("Highest Match Score", int(highest_score))
+        c6.metric("Fours", int(fours))
+        c7.metric("Sixes", int(sixes))
+        c8.metric("50s / 100s", f"{fifties} / {hundreds}")
 
-        
         st.markdown("---")
-        player_df = df[df["batter"] == selected_player]
-        st.subheader("🖐 Batting Stats")
-        st.dataframe(player_df)
-        st.markdown("---")
-        st.title("Runs by Season garph")
 
-        season_runs = bat_df.groupby("season")["runs_batter"].sum()
-        st.markdown("🎰 Runs by Season")
+        st.subheader("📈 Runs by Season")
+
+        season_runs = (
+            bat_df.groupby("season")["runs_batter"]
+            .sum()
+            .sort_index()
+        )
+
         st.bar_chart(season_runs)
 
-        st.markdown("---")
+        with st.expander("📋 View Batting Data"):
+            st.dataframe(
+                bat_df,
+                use_container_width=True
+            )
+
+    # ==============================
+    # BOWLING CAREER STATS
+    # ==============================
 
     if is_bowler:
 
-        st.title("🎯 Bowling Career Stats")
+        st.markdown("---")
+        st.header("🎯 Bowling Career Stats")
 
-        bowl_df = df[df["bowler"] == selected_player]
+        bowl_df = df[
+            df["bowler"] == selected_player
+        ].copy()
 
         matches = bowl_df["match_id"].nunique()
-
         wickets = bowl_df["bowler_wicket"].sum()
-
         balls_bowled = bowl_df["valid_ball"].sum()
-
         runs_conceded = bowl_df["runs_total"].sum()
 
-        overs = round(balls_bowled / 6, 1)
-
-        economy = round(
-            runs_conceded / (balls_bowled / 6), 2
-        ) if balls_bowled > 0 else 0
-
-        best_figures = (
-            bowl_df.groupby("match_id")["bowler_wicket"].sum().max()
-            if not bowl_df.groupby("match_id")["bowler_wicket"].sum().empty
-            else 0
+        # Display actual cricket overs: balls / 6
+        overs = (
+            f"{int(balls_bowled // 6)}."
+            f"{int(balls_bowled % 6)}"
         )
 
-        c1, c2, c3, c4, c5,c6 = st.columns(6)
+        economy = (
+            round(runs_conceded / (balls_bowled / 6), 2)
+            if balls_bowled > 0 else 0
+        )
+
+        wickets_per_match = (
+            bowl_df.groupby("match_id")["bowler_wicket"].sum()
+        )
+
+        best_figures = (
+            wickets_per_match.max()
+            if not wickets_per_match.empty else 0
+        )
+
+        c1, c2, c3 = st.columns(3)
 
         c1.metric("Matches", matches)
-        c2.metric("Wickets", int(wickets))
-        c3.metric("Balls", int(balls_bowled))
-        c4.metric("Overs", overs)
-        c5.metric("Economy", economy)
-        c6.metric("Best (Wkts in Match)", int(best_figures))
+        c2.metric("Total Wickets", int(wickets))
+        c3.metric("Balls Bowled", int(balls_bowled))
+
+        c4, c5, c6 = st.columns(3)
+
+        c4.metric("Overs Bowled", overs)
+        c5.metric("Economy Rate", economy)
+        c6.metric("Best Match Wickets", int(best_figures))
 
         st.markdown("---")
-        player_df = df[df["bowler"] == selected_player]
-        st.subheader("⛹ Bowling Stats")
-        st.dataframe(player_df)
 
-        st.markdown("---")
+        st.subheader("📊 Wickets by Season")
 
-        st.markdown("🏃 Runs by Season")
-        season_wickets = bowl_df.groupby("season")["bowler_wicket"].sum()
-        st.markdown("##### Wickets by Season")
+        season_wickets = (
+            bowl_df.groupby("season")["bowler_wicket"]
+            .sum()
+            .sort_index()
+        )
+
         st.bar_chart(season_wickets)
 
-        st.markdown("---")
-        st.info("🏅 Orange Cap & Purple Cap Leaderboards")
+        with st.expander("📋 View Bowling Data"):
+            st.dataframe(
+                bowl_df,
+                use_container_width=True
+            )
 
-        st.markdown("---")
+    # ==============================
+    # ORANGE CAP & PURPLE CAP
+    # ==============================
 
-        all_seasons = sorted(df["season"].unique())
-        selected_season = st.selectbox("Select Season", all_seasons, key="home_season")
-        st.markdown("---")
-        tab1, tab2 = st.tabs(["🟠 Orange Cap", "🟣 Purple Cap"])
+    st.markdown("---")
+    st.header("🏆 IPL Season Leaderboards")
+
+    all_seasons = sorted(
+        df["season"].dropna().unique()
+    )
+
+    if all_seasons:
+
+        selected_season = st.selectbox(
+            "📅 Select Season",
+            all_seasons,
+            index=len(all_seasons) - 1,
+            key="player_cap_season"
+        )
+
+        season_df = df[
+            df["season"] == selected_season
+        ]
+
+        tab1, tab2 = st.tabs([
+            "🟠 Orange Cap — Most Runs",
+            "🟣 Purple Cap — Most Wickets"
+        ])
 
         with tab1:
-            st.markdown("🟠 Orange Cap (Most Runs)")
 
-            orange_cap_df = df[df["season"] == selected_season]
-            orange_cap_df = orange_cap_df.groupby("batter")["runs_batter"].sum().reset_index()
-            orange_cap_df = orange_cap_df.sort_values("runs_batter", ascending=False).head(10)
-            st.dataframe(orange_cap_df)
+            orange_cap_df = (
+                season_df.groupby("batter")["runs_batter"]
+                .sum()
+                .sort_values(ascending=False)
+                .head(10)
+                .reset_index()
+            )
 
-            # plotly_chart(orange_cap_df, "Runs", "Player") Horizontal Bar Charts
-
-            st.markdown("---")
-            fig = px.bar(
+            st.dataframe(
                 orange_cap_df,
-                x="runs_batter",
-                y="batter",
-                orientation="h",
-                title="🟠 Orange Cap (Most Runs)",
-                template="plotly_white",
-                color_discrete_sequence=["#FF5E0E"],    
-            )
-            st.plotly_chart(
-                fig, use_container_width=True
+                use_container_width=True,
+                hide_index=True
             )
 
-            st.markdown("---")
+            if not orange_cap_df.empty:
 
+                fig = px.bar(
+                    orange_cap_df,
+                    x="runs_batter",
+                    y="batter",
+                    orientation="h",
+                    title=f"🟠 Orange Cap — {selected_season}",
+                    template="plotly_dark",
+                    color_discrete_sequence=["#FF5E0E"]
+                )
+
+                fig.update_layout(
+                    yaxis={"categoryorder": "total ascending"}
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True
+                )
 
         with tab2:
-            st.markdown("🟣 Purple Cap (Most Wickets)")
 
-            purple_cap_df = df[df["season"] == selected_season]
-            purple_cap_df = purple_cap_df.groupby("bowler")["bowler_wicket"].sum().reset_index()
-            purple_cap_df = purple_cap_df.sort_values("bowler_wicket", ascending=False).head(10)
-            st.dataframe(purple_cap_df)
+            purple_cap_df = (
+                season_df.groupby("bowler")["bowler_wicket"]
+                .sum()
+                .sort_values(ascending=False)
+                .head(10)
+                .reset_index()
+            )
 
-            # plotly_chart(purple_cap_df, "Wickets", "Player") Horizontal Bar Charts
-
-            st.markdown("---")
-            fig = px.bar(
+            st.dataframe(
                 purple_cap_df,
-                x="bowler_wicket",
-                y="bowler",
-                orientation="h",
-                title="🟣 Purple Cap (Most Wickets)",
-                template="plotly_white",
-                color_discrete_sequence=["#6A0DAD"],
-            )
-            st.plotly_chart(
-                fig, use_container_width=True
+                use_container_width=True,
+                hide_index=True
             )
 
-            st.markdown("---")
+            if not purple_cap_df.empty:
+
+                fig = px.bar(
+                    purple_cap_df,
+                    x="bowler_wicket",
+                    y="bowler",
+                    orientation="h",
+                    title=f"🟣 Purple Cap — {selected_season}",
+                    template="plotly_dark",
+                    color_discrete_sequence=["#9B59FF"]
+                )
+
+                fig.update_layout(
+                    yaxis={"categoryorder": "total ascending"}
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True
+                )
+
 
 elif home == "📈 Points Table":
     st.title("📈 Points Table")
