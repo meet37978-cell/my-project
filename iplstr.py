@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import matplotlib.pyplot as plt 
 # streamlit run iplstr.py 
 # Load Data
-df = pd.read_csv("IPL.csv", low_memory=False)
+df = pd.read_csv("IPL.zip", compression="zip", low_memory=False)
 df["date"] = pd.to_datetime(df["date"])
 df["season"] = df["date"].dt.year
 
